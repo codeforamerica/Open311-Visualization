@@ -1,0 +1,146 @@
+<!doctype html>
+  <head>
+	<link rel="stylesheet" type="text/css" href="tooltips/jquery.qtip.css" />
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.4.4/jquery.min.js" type="text/javascript" charset="utf-8"></script>
+	<script type="text/javascript" src="tooltips/jquery.qtip.pack.js"></script>
+	<script type="text/javascript" src="http://tile.cloudmade.com/wml/0.4/web-maps-lite.js"></script>
+    <script type="text/javascript">	
+		//This code needs to be cleaned up! -MLEvans
+		jQuery(document).ready(function(){
+			jQuery.getJSON('data/sfPolygons.json', init);
+		});
+				
+		CM.Polygon.prototype.insideRectBounds = function(latLng){
+			if(((latLng.lng()) > (this.getBounds().getNorthEast().lng())) || ((latLng.lng()) < (this.getBounds().getSouthWest().lng())) || ((latLng.lat()) > (this.getBounds().getNorthEast().lat())) || ((latLng.lat()) < (this.getBounds().getSouthWest().lat()))){
+				return false;
+			} else {
+				return true;
+			}
+		}
+		
+		CM.Polygon.prototype.insidePolygon = function(latLng){			
+			 if(!this.insideRectBounds(latLng)){
+				return false;
+			 }
+			 
+			 var verticesCount = this.getVertexCount();
+			 var inside = false;
+			 var i;
+			 var j = verticesCount - 1;
+			 
+			 for (i = 0; i < verticesCount; i++){
+				vertexA = this.getVertex(i);
+				vertexB = this.getVertex(j);
+				
+				if(((vertexA.lng() < latLng.lng()) && (vertexB.lng() >= latLng.lng())) || ((vertexB.lng() < latLng.lng()) && (vertexA.lng() >= latLng.lng()))) {
+					if(vertexA.lat() + (((latLng.lng() - vertexA.lng()) / (vertexB.lng() - vertexA.lng())) * (vertexB.lat() - vertexA.lat())) < latLng.lat()) {
+					 inside = !inside;
+					}
+				}
+				j = i;
+			 }
+			return inside;
+		}
+
+        function init(data){
+			var polygonData = data.polygons;
+			
+			var vertices = [];
+			var permVerticesArray = [];
+			var Polygons = [];
+			
+			//Loop lengths
+			var polygonDataLength;
+			var polygonDataPointsLength;
+			var polygonsLength;
+			
+			var i, j, k;
+			
+			var polygonHighlighted = -1;
+			var noPolygon;
+		
+			$("#theMap").qtip({
+				prerender: true,
+				content: 'tip',
+				position: {
+					target: 'mouse',
+					adjust: { x: 15, y:20 }
+				},
+				show: false,
+				style: { 
+					classes: 'ui-tooltip-shadow ui-tooltip-tipsy',
+					tip: false
+				}  
+			});
+
+			var api = $("#theMap").qtip();
+
+			var heatmap = new CM.Tiles.Base({tileUrlTemplate: 'tiles/Zoom13/#{x}_#{y}.png', minZoomLevel: 13, maxZoomLevel:13});
+
+			var map = new CM.Map('theMap', heatmap);
+			map.setCenter(new CM.LatLng(37.7533, -122.43172), 13);
+			
+			var cloudmade = new CM.Tiles.CloudMade.Web({key: '1a193057ca6040fca68c4ae162bec2da', styleId: 28110, minZoomLevel: 13, maxZoomLevel: 13});
+			var mapOverlay = new CM.TileLayerOverlay(cloudmade);
+			map.addOverlay(mapOverlay);
+			
+			map.disableDragging();
+
+			for(i=0, polygonDataLength = polygonData.length; i < polygonDataLength; i++){
+				for(j=0, polygonDataPointsLength = polygonData[i].Points.length; j < polygonDataPointsLength; j++){
+					vertices[j] = new CM.LatLng(polygonData[i].Points[j][0],polygonData[i].Points[j][1]);
+				}
+				permVerticesArray[i] = vertices; //for mouseover
+				Polygons[i] = new CM.Polygon(vertices,"#050505",4,.75,"#FFFF00",.00001);
+				map.addOverlay(Polygons[i]);
+				Polygons[i].hide();
+		
+				vertices = [];
+			}	
+		
+			CM.Event.addListener(map, 'mousemove', function(latLng) {
+				noPolygon = true;
+				for(k=0, polygonsLength = Polygons.length;k < polygonsLength;k++){
+					if(Polygons[k].insidePolygon(latLng)){
+							noPolygon = false;
+				
+							if(polygonHighlighted !== -1){
+								Polygons[polygonHighlighted].hide();
+							}
+
+							if(polygonHighlighted !== k){
+								//this is a sample
+								content = polygonData[k].Name + '<div align="center" style="font-weight:normal; font-size: 12px"><sup>Total Requests</sup><img width="100" height="30" src="http://chart.apis.google.com/chart?chf=bg,s,65432100&cht=lc&chs=100x30&chd=t:6,23,16,34,39,19,25,39,45,35,16,23,19,35,55,61,45,67,25,30,41&chco=336699&chls=1,1,0&chm=o,990000,0,20,4&chxt=r,x,y&chxs=0,990000,11,0,_|1,990000,1,0,_|2,990000,1,0,_&chxl=0:|12|1:||2:||&chxp=0,43"><sup> January 2010</sup></div>';
+								api.set('content.text', content);
+								polygonHighlighted = k;
+							}
+							
+							Polygons[k].show();
+							api.show();				
+
+							/*
+							if(v != -1){
+								clearTimeout(v);
+								//http://stackoverflow.com/questions/219322/how-can-i-use-javascript-timing-to-control-on-mouse-stop-and-on-mouse-move-events
+							}
+							v = setTimeout(function() { map.closeInfoWindow(); map.openInfoWindow(latLng, t, {maxWidth: 200}); }, 500);
+							*/
+					} else {
+						Polygons[k].hide();
+					}
+				}
+				
+				if(noPolygon){
+					api.hide();
+					polygonHighlighted = -1;
+				}
+				
+			}, Polygons[k]);
+			}
+	</script>
+  </head>
+  <body>
+		<div id="theMap" style="width: 1024px; height: 1024px;"></div>
+		<!-- <div id="message">Drag or click the map.</div> -->
+  </body>
+</html>
